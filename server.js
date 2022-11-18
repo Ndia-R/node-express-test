@@ -9,12 +9,20 @@ const users = [
   { id: 3, name: "Steve", age: 28 },
 ];
 
+app.use(express.json());
+
 app.get("/", (req, res) => {
   res.send("test");
 });
 
 app.get("/users", (req, res) => {
   res.json(users);
+});
+
+app.get("/user/:id", (req, res) => {
+  const id = req.params.id;
+  const user = users.find((user) => user.id === Number(id));
+  res.json(user);
 });
 
 app.listen(PORT, () => {
