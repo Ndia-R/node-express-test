@@ -19,7 +19,11 @@
   },
   "homepage": "https://github.com/Ndia-R/node-express-test#readme",
   "dependencies": {
+    "bcrypt": "^5.1.0",
+    "cookie-parser": "^1.4.6",
     "express": "^4.18.2",
+    "express-validator": "^6.14.2",
+    "jsonwebtoken": "^8.5.1",
     "nodemon": "^2.0.20"
   }
 }
