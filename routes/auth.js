@@ -1,8 +1,9 @@
-const { body, validationResult } = require("express-validator");
 const router = require("express").Router();
-const { Users } = require("../db/User");
 const bcrypt = require("bcrypt");
-const JWT = require("jsonwebtoken");
+const jwt = require("jsonwebtoken");
+
+const { body, validationResult } = require("express-validator");
+const { Users } = require("../db/User");
 
 router.post(
   "/sign-up",
@@ -35,18 +36,15 @@ router.post(
 
     const payload = { username };
 
-    const access_token = await JWT.sign(payload, "SECRET_KEY_ACCESS", {
+    const access_token = await jwt.sign(payload, "SECRET_KEY_ACCESS", {
       expiresIn: "1m",
+      audience: "emerald",
+      issuer: "emerald",
+      subject: newUser.id.toString(),
     });
 
-    const refresh_token = await JWT.sign(payload, "SECRET_KEY_REFRESH", {
-      expiresIn: "1h",
-    });
-
-    res.cookie("access_token", access_token, { httpOnly: true });
     res.json({
       access_token: access_token,
-      refresh_token: refresh_token,
     });
   }
 );
@@ -69,18 +67,12 @@ router.post(
     }
 
     const payload = { username };
-    const access_token = await JWT.sign(payload, "SECRET_KEY_ACCESS", {
+    const access_token = await jwt.sign(payload, "SECRET_KEY_ACCESS", {
       expiresIn: "1m",
     });
 
-    const refresh_token = await JWT.sign(payload, "SECRET_KEY_REFRESH", {
-      expiresIn: "1h",
-    });
-
-    res.cookie("access_token", access_token, { httpOnly: true });
     res.json({
       access_token: access_token,
-      refresh_token: refresh_token,
     });
   }
 );

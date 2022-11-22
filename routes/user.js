@@ -1,9 +1,13 @@
 const router = require("express").Router();
 const { Users } = require("../db/User");
-const { checkJWT } = require("../middleware/checkJWT");
+const passport = require("passport");
 
-router.get("/users", checkJWT, (req, res) => {
-  res.json(Users);
-});
+router.get(
+  "/users",
+  passport.authenticate("jwt", { session: false }),
+  (req, res) => {
+    res.json(Users);
+  }
+);
 
 module.exports = router;

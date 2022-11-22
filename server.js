@@ -1,9 +1,14 @@
 const express = require("express");
 const cookieParser = require("cookie-parser");
 
+const passport = require("passport");
+
 const app = express();
 const auth = require("./routes/auth");
 const user = require("./routes/user");
+
+app.use(passport.initialize());
+require("./authentication/jwt");
 
 const PORT = 5000;
 
