@@ -1,9 +1,17 @@
 const router = require("express").Router();
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
+const crypto = require("crypto");
 
 const { body, validationResult } = require("express-validator");
 const { Users } = require("../db/User");
+
+const createRandomString = (N) => {
+  const S = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+  return Array.from(crypto.randomFillSync(new Uint8Array(N)))
+    .map((n) => S[n % S.length])
+    .join("");
+};
 
 router.post(
   "/sign-up",
@@ -23,7 +31,6 @@ router.post(
         .status(409)
         .json({ message: "すでにユーザーが存在しています" });
     }
-
     const hashedPassword = await bcrypt.hash(password, 10);
 
     const newUser = {
@@ -31,15 +38,17 @@ router.post(
       username,
       password: hashedPassword,
       email: `${username}@gmail.com`,
+      refresh_token: createRandomString(32),
     };
     Users.push(newUser);
+    console.log(newUser);
 
     const payload = { username };
 
-    const access_token = await jwt.sign(payload, "SECRET_KEY_ACCESS", {
+    const access_token = await jwt.sign(payload, process.env.JWT_SECRET, {
       expiresIn: "1m",
-      audience: "emerald",
-      issuer: "emerald",
+      audience: process.env.JWT_AUDIENCE,
+      issuer: process.env.JWT_ISSUER,
       subject: newUser.id.toString(),
     });
 
@@ -67,7 +76,7 @@ router.post(
     }
 
     const payload = { username };
-    const access_token = await jwt.sign(payload, "SECRET_KEY_ACCESS", {
+    const access_token = await jwt.sign(payload, process.env.JWT_SECRET, {
       expiresIn: "1m",
     });
 
