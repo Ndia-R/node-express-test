@@ -43,7 +43,7 @@ router.post(
     Users.push(newUser);
     console.log(newUser);
 
-    const payload = { username };
+    const payload = { username: newUser.username };
 
     const access_token = await jwt.sign(payload, process.env.JWT_SECRET, {
       expiresIn: "1m",
@@ -66,18 +66,19 @@ router.post(
     const { username, password } = req.body;
 
     const user = Users.find((user) => user.username === username);
-    if (!user) {
-      return res.status(400).json({ message: "そのユーザーは存在しません" });
-    }
-
     const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) {
-      return res.status(400).json({ message: "パスワードが違います" });
+    if (!user || !isMatch) {
+      return res
+        .status(401)
+        .json({ message: "ユーザー名またはパスワードが違います" });
     }
 
-    const payload = { username };
+    const payload = { username: user.username };
     const access_token = await jwt.sign(payload, process.env.JWT_SECRET, {
       expiresIn: "1m",
+      audience: process.env.JWT_AUDIENCE,
+      issuer: process.env.JWT_ISSUER,
+      subject: user.id.toString(),
     });
 
     res.json({
