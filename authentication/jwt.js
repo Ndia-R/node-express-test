@@ -4,7 +4,7 @@ const { Users } = require("../db/User");
 
 const jwtOptions = {
   jwtFromRequest: passportJwt.ExtractJwt.fromAuthHeaderAsBearerToken(),
-  secretOrKey: process.env.JWT_SECRET,
+  secretOrKey: process.env.JWT_SECRET_ACCESS,
   issuer: process.env.JWT_ISSUER,
   audience: process.env.JWT_AUDIENCE,
   ignoreExpiration: false,
@@ -33,7 +33,7 @@ passport.use(
 // }
 //
 // 不正な形式のトークン
-// "errors": {jwt malformed
+// "errors": {
 //   "message": {
 //     "name": "JsonWebTokenError",
 //     "message": "jwt malformed"
