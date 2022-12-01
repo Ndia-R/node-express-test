@@ -4,7 +4,7 @@ const { Users } = require("../db/User");
 
 const jwtOptions = {
   jwtFromRequest: passportJwt.ExtractJwt.fromAuthHeaderAsBearerToken(),
-  secretOrKey: process.env.JWT_SECRET_ACCESS,
+  secretOrKey: process.env.JWT_SECRET,
   issuer: process.env.JWT_ISSUER,
   audience: process.env.JWT_AUDIENCE,
   ignoreExpiration: false,

@@ -1,12 +1,13 @@
 const router = require("express").Router();
 const bcrypt = require("bcrypt");
+const crypto = require("crypto");
 const jwt = require("jsonwebtoken");
 
 const { body, validationResult } = require("express-validator");
 const { Users } = require("../db/User");
 
 router.post(
-  "/sign-up",
+  "/register",
   body("username").notEmpty(),
   body("password").notEmpty(),
   async (req, res) => {
@@ -20,9 +21,12 @@ router.post(
     const { username, password } = req.body;
     const user = Users.find((user) => user.username === username);
     if (user) {
-      return res
-        .status(409)
-        .json({ message: "すでにユーザーが存在しています" });
+      return res.status(409).json({
+        error: {
+          name: "AlreadyExistsError",
+          message: "すでにユーザーが存在しています",
+        },
+      });
     }
 
     // パスワードのハッシュ化
@@ -31,94 +35,131 @@ router.post(
     // 新規ユーザー作成
     const newUser = {
       id: Math.max(...Users.map((user) => user.id)) + 1,
-      username,
+      username: username,
       password: hashedPassword,
-      email: `${username}@gmail.com`,
       refresh_token: "",
+      refresh_token_iat: 0,
     };
     Users.push(newUser);
-    console.log(newUser);
 
-    // アクセストークン作成
-    const payload = { username: newUser.username };
-
-    const access_token = await jwt.sign(
-      payload,
-      process.env.JWT_SECRET_ACCESS,
-      {
-        expiresIn: "1m",
-        audience: process.env.JWT_AUDIENCE,
-        issuer: process.env.JWT_ISSUER,
-        subject: newUser.id.toString(),
-      }
-    );
-
-    // リフレッシュトークン作成
-    const refresh_token = await jwt.sign(
-      payload,
-      process.env.JWT_SECRET_REFRESH,
-      {
-        expiresIn: "5m",
-        audience: process.env.JWT_AUDIENCE,
-        issuer: process.env.JWT_ISSUER,
-        subject: newUser.id.toString(),
-      }
-    );
-
-    // リフレッシュトークンをクッキーへ保存
-    res.cookie("refresh_token", refresh_token, {
-      httpOnly: true,
-      secure: false,
-    });
-
-    // リフレッシュトークンをＤＢへ保存
-    Users.forEach((user) => {
-      if (user.id === newUser.id) {
-        user.refresh_token = refresh_token;
-      }
-    });
-
-    console.log(Users);
-
-    // レスポンス返却
-    res.json({
-      access_token: access_token,
-    });
+    res.json({ message: "ユーザー登録完了" });
   }
 );
 
-router.post(
-  "/sign-in",
-  body("username").notEmpty(),
-  body("password").notEmpty(),
-  async (req, res) => {
-    const { username, password } = req.body;
+router.post("/login", async (req, res) => {
+  // ログインチェック
+  const { username, password } = req.body;
+  const user = Users.find((user) => user.username === username);
+  const isMatch = await bcrypt.compare(password, user.password);
+  if (!user || !isMatch) {
+    return res.status(401).json({
+      error: {
+        name: "AuthenticationError",
+        message: "ユーザー名またはパスワードが違います",
+      },
+    });
+  }
 
-    const user = Users.find((user) => user.username === username);
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!user || !isMatch) {
-      return res
-        .status(401)
-        .json({ message: "ユーザー名またはパスワードが違います" });
+  // アクセストークン作成
+  const payload = { username: user.username };
+  const access_token = jwt.sign(payload, process.env.JWT_SECRET, {
+    expiresIn: process.env.JWT_EXPIRES_IN,
+    audience: process.env.JWT_AUDIENCE,
+    issuer: process.env.JWT_ISSUER,
+    subject: user.id.toString(),
+  });
+
+  // リフレッシュトークン作成
+  const refresh_token = crypto.randomBytes(48).toString("hex");
+
+  // リフレッシュトークンをクッキーにセット
+  res.cookie("refresh_token", refresh_token, {
+    httpOnly: true,
+    secure: false,
+    path: "/auth/refresh",
+  });
+
+  // リフレッシュトークンをＤＢへ保存
+  Users.forEach((targetUser) => {
+    if (targetUser.id === user.id) {
+      const currentTime = Math.floor(Date.now() / 1000);
+      targetUser.refresh_token = refresh_token;
+      targetUser.refresh_token_iat = currentTime;
     }
+  });
 
-    const payload = { username: user.username };
+  res.json({ access_token: access_token });
+});
 
-    const access_token = await jwt.sign(
-      payload,
-      process.env.JWT_SECRET_ACCESS,
-      {
-        expiresIn: "1m",
-        audience: process.env.JWT_AUDIENCE,
-        issuer: process.env.JWT_ISSUER,
-        subject: user.id.toString(),
-      }
-    );
-
-    res.json({
-      access_token: access_token,
+router.post("/refresh", (req, res) => {
+  // アクセストークンが存在するか
+  const { access_token } = req.body;
+  if (!access_token) {
+    return res.status(400).json({
+      error: {
+        name: "TokenNotFoundError",
+        message: "access_token not found",
+      },
     });
   }
-);
+
+  // アクセストークンが有効か
+  // ※エラーの中でも「トークンの有効期限が切れている場合」はリターンしない
+  try {
+    jwt.verify(access_token, process.env.JWT_SECRET);
+  } catch (err) {
+    if (err.name !== "TokenExpiredError") {
+      return res.status(401).json({ error: err });
+    }
+  }
+
+  // リフレッシュトークンが存在するか
+  const { refresh_token } = req.cookies;
+  if (!refresh_token) {
+    return res.status(400).json({
+      error: {
+        name: "TokenNotFoundError",
+        message: "refresh_token not found",
+      },
+    });
+  }
+
+  // リフレッシュトークンが有効か（ユーザー一覧に保存されているか）
+  const decoded = jwt.decode(access_token);
+  const user = Users.find(
+    (user) =>
+      user.refresh_token === refresh_token && user.id === Number(decoded.sub)
+  );
+  if (!user) {
+    return res.status(401).json({
+      error: {
+        name: "InvalidTokenError",
+        message: "invalid refresh_token",
+      },
+    });
+  }
+
+  // リフレッシュトークンが有効期限内か
+  const currentTime = Math.floor(Date.now() / 1000);
+  if (currentTime - user.refresh_token_iat >= 5 * 60) {
+    return res.status(401).json({
+      error: {
+        name: "TokenExpiredError",
+        message: "refresh_token expired",
+      },
+    });
+  }
+
+  // 新しいアクセストークンを作成
+  const payload = { username: user.username };
+  const newToken = jwt.sign(payload, process.env.JWT_SECRET, {
+    expiresIn: process.env.JWT_EXPIRES_IN,
+    audience: process.env.JWT_AUDIENCE,
+    issuer: process.env.JWT_ISSUER,
+    subject: user.id.toString(),
+  });
+
+  res.json({ access_token: newToken });
+});
 
 module.exports = router;
