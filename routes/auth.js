@@ -7,7 +7,7 @@ const { body, validationResult } = require("express-validator");
 const { Users } = require("../db/User");
 
 router.post(
-  "/register",
+  "/user-register",
   body("username").notEmpty(),
   body("password").notEmpty(),
   async (req, res) => {
@@ -49,9 +49,18 @@ router.post(
 router.post("/login", async (req, res) => {
   // ログインチェック
   const { username, password } = req.body;
+
   const user = Users.find((user) => user.username === username);
+  if (!user) {
+    return res.status(401).json({
+      error: {
+        name: "AuthenticationError",
+        message: "ユーザー名またはパスワードが違います",
+      },
+    });
+  }
   const isMatch = await bcrypt.compare(password, user.password);
-  if (!user || !isMatch) {
+  if (!isMatch) {
     return res.status(401).json({
       error: {
         name: "AuthenticationError",
@@ -63,7 +72,7 @@ router.post("/login", async (req, res) => {
   // アクセストークン作成
   const payload = { username: user.username };
   const access_token = jwt.sign(payload, process.env.JWT_SECRET, {
-    expiresIn: process.env.JWT_EXPIRES_IN,
+    expiresIn: Number(process.env.JWT_EXPIRES_IN),
     audience: process.env.JWT_AUDIENCE,
     issuer: process.env.JWT_ISSUER,
     subject: user.id.toString(),
@@ -153,7 +162,7 @@ router.post("/refresh", (req, res) => {
   // 新しいアクセストークンを作成
   const payload = { username: user.username };
   const newToken = jwt.sign(payload, process.env.JWT_SECRET, {
-    expiresIn: process.env.JWT_EXPIRES_IN,
+    expiresIn: Number(process.env.JWT_EXPIRES_IN),
     audience: process.env.JWT_AUDIENCE,
     issuer: process.env.JWT_ISSUER,
     subject: user.id.toString(),

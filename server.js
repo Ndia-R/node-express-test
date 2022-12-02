@@ -12,8 +12,6 @@ const TestResult = require("./routes/test-result");
 app.use(passport.initialize());
 require("./authentication/jwt");
 
-const PORT = 5000;
-
 app.use(cookieParser());
 app.use(express.json());
 
@@ -23,6 +21,7 @@ app.use("/auth", auth);
 app.use("/user", jwtVerify, user);
 app.use("/test-result", jwtVerify, TestResult);
 
+const PORT = 5000;
 app.listen(PORT, () => {
   console.log("server running");
 });
