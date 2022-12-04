@@ -6,6 +6,9 @@ const jwt = require("jsonwebtoken");
 const { body, validationResult } = require("express-validator");
 const { Users } = require("../db/User");
 
+//-----------------------------------------------------------------
+// 新規ユーザー登録
+//-----------------------------------------------------------------
 router.post(
   "/user-register",
   body("username").notEmpty(),
@@ -38,7 +41,6 @@ router.post(
       username: username,
       password: hashedPassword,
       refresh_token: "",
-      refresh_token_iat: 0,
     };
     Users.push(newUser);
 
@@ -46,13 +48,16 @@ router.post(
   }
 );
 
+//-----------------------------------------------------------------
+// ログイン
+//-----------------------------------------------------------------
 router.post("/login", async (req, res) => {
   // ログインチェック
   const { username, password } = req.body;
 
   const user = Users.find((user) => user.username === username);
   if (!user) {
-    return res.status(401).json({
+    return res.status(404).json({
       error: {
         name: "AuthenticationError",
         message: "ユーザー名またはパスワードが違います",
@@ -61,7 +66,7 @@ router.post("/login", async (req, res) => {
   }
   const isMatch = await bcrypt.compare(password, user.password);
   if (!isMatch) {
-    return res.status(401).json({
+    return res.status(404).json({
       error: {
         name: "AuthenticationError",
         message: "ユーザー名またはパスワードが違います",
@@ -69,106 +74,84 @@ router.post("/login", async (req, res) => {
     });
   }
 
-  // アクセストークン作成
+  // アクセストークンとリフレッシュトークンの作成（JWT）
   const payload = { username: user.username };
-  const access_token = jwt.sign(payload, process.env.JWT_SECRET, {
-    expiresIn: Number(process.env.JWT_EXPIRES_IN),
+
+  const access_token = jwt.sign(payload, process.env.JWT_ACCESS_TOKEN_SECRET, {
+    expiresIn: process.env.JWT_ACCESS_TOKEN_EXPIRES_IN,
     audience: process.env.JWT_AUDIENCE,
     issuer: process.env.JWT_ISSUER,
     subject: user.id.toString(),
   });
 
-  // リフレッシュトークン作成
-  const refresh_token = crypto.randomBytes(48).toString("hex");
+  const refresh_token = jwt.sign(
+    payload,
+    process.env.JWT_REFRESH_TOKEN_SECRET,
+    {
+      expiresIn: Number(process.env.JWT_REFRESH_TOKEN_EXPIRES_IN),
+      audience: process.env.JWT_AUDIENCE,
+      issuer: process.env.JWT_ISSUER,
+      subject: user.id.toString(),
+    }
+  );
 
   // リフレッシュトークンをクッキーにセット
   res.cookie("refresh_token", refresh_token, {
     httpOnly: true,
-    secure: false,
-    path: "/auth/refresh",
+    maxAge: Number(process.env.JWT_REFRESH_TOKEN_EXPIRES_IN) * 1000,
+    secure: true,
+    sameSite: "strict",
   });
 
   // リフレッシュトークンをＤＢへ保存
-  Users.forEach((targetUser) => {
-    if (targetUser.id === user.id) {
-      const currentTime = Math.floor(Date.now() / 1000);
-      targetUser.refresh_token = refresh_token;
-      targetUser.refresh_token_iat = currentTime;
+  Users.forEach((u) => {
+    if (u.id === user.id) {
+      u.refresh_token = refresh_token;
     }
   });
 
   res.json({ access_token: access_token });
 });
 
-router.post("/refresh", (req, res) => {
-  // アクセストークンが存在するか
-  const { access_token } = req.body;
-  if (!access_token) {
-    return res.status(400).json({
-      error: {
-        name: "TokenNotFoundError",
-        message: "access_token not found",
-      },
-    });
-  }
-
-  // アクセストークンが有効か
-  // ※エラーの中でも「トークンの有効期限が切れている場合」はリターンしない
-  try {
-    jwt.verify(access_token, process.env.JWT_SECRET);
-  } catch (err) {
-    if (err.name !== "TokenExpiredError") {
-      return res.status(401).json({ error: err });
-    }
-  }
-
-  // リフレッシュトークンが存在するか
+//-----------------------------------------------------------------
+// リフレッシュトークン
+//-----------------------------------------------------------------
+router.get("/refresh", (req, res) => {
   const { refresh_token } = req.cookies;
-  if (!refresh_token) {
-    return res.status(400).json({
-      error: {
-        name: "TokenNotFoundError",
-        message: "refresh_token not found",
-      },
+  try {
+    // リフレッシュトークンが有効か
+    const decoded = jwt.verify(
+      refresh_token,
+      process.env.JWT_REFRESH_TOKEN_SECRET
+    );
+
+    // ＤＢに保存しているリフレッシュトークンと一致するか
+    const user = Users.find(
+      (user) =>
+        user.id === Number(decoded.sub) && user.refresh_token === refresh_token
+    );
+    if (!user) {
+      throw new Error({
+        error: {
+          name: "UserNotFoundError",
+          message: "user not found",
+        },
+      });
+    }
+
+    // 新しいアクセストークンを作成
+    const payload = { username: user.username };
+    const newToken = jwt.sign(payload, process.env.JWT_ACCESS_TOKEN_SECRET, {
+      expiresIn: process.env.JWT_ACCESS_TOKEN_EXPIRES_IN,
+      audience: process.env.JWT_AUDIENCE,
+      issuer: process.env.JWT_ISSUER,
+      subject: user.id.toString(),
     });
+
+    return res.json({ access_token: newToken });
+  } catch (e) {
+    return res.json({ access_token: undefined });
   }
-
-  // リフレッシュトークンが有効か（ユーザー一覧に保存されているか）
-  const decoded = jwt.decode(access_token);
-  const user = Users.find(
-    (user) =>
-      user.refresh_token === refresh_token && user.id === Number(decoded.sub)
-  );
-  if (!user) {
-    return res.status(401).json({
-      error: {
-        name: "InvalidTokenError",
-        message: "invalid refresh_token",
-      },
-    });
-  }
-
-  // リフレッシュトークンが有効期限内か
-  const currentTime = Math.floor(Date.now() / 1000);
-  if (currentTime - user.refresh_token_iat >= 5 * 60) {
-    return res.status(401).json({
-      error: {
-        name: "TokenExpiredError",
-        message: "refresh_token expired",
-      },
-    });
-  }
-
-  // 新しいアクセストークンを作成
-  const payload = { username: user.username };
-  const newToken = jwt.sign(payload, process.env.JWT_SECRET, {
-    expiresIn: Number(process.env.JWT_EXPIRES_IN),
-    audience: process.env.JWT_AUDIENCE,
-    issuer: process.env.JWT_ISSUER,
-    subject: user.id.toString(),
-  });
-
-  res.json({ access_token: newToken });
 });
 
 module.exports = router;

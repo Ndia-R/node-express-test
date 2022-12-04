@@ -1,4 +1,5 @@
 const express = require("express");
+const cors = require("cors");
 const cookieParser = require("cookie-parser");
 const passport = require("passport");
 
@@ -8,6 +9,12 @@ const app = express();
 const auth = require("./routes/auth");
 const user = require("./routes/user");
 const TestResult = require("./routes/test-result");
+app.use(
+  cors({
+    origin: "http://localhost:5173",
+    credentials: true,
+  })
+);
 
 app.use(passport.initialize());
 require("./authentication/jwt");
@@ -15,11 +22,13 @@ require("./authentication/jwt");
 app.use(cookieParser());
 app.use(express.json());
 
-const jwtVerify = require("./authentication/jwt");
-
 app.use("/auth", auth);
-app.use("/user", jwtVerify, user);
-app.use("/test-result", jwtVerify, TestResult);
+app.use("/user", passport.authenticate("jwt", { session: false }), user);
+app.use(
+  "/test-result",
+  passport.authenticate("jwt", { session: false }),
+  TestResult
+);
 
 const PORT = 5000;
 app.listen(PORT, () => {

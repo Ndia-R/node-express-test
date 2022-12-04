@@ -11,4 +11,19 @@ router.get("/test-result/:id", (req, res) => {
   res.json(testResult);
 });
 
+router.post("/test-result", (req, res) => {
+  const { score, testName } = req.body;
+
+  const id = Math.max(...TestResults.map((t) => t.id)) + 1;
+  const newItem = {
+    id: id,
+    userId: id,
+    score: score,
+    testName: testName,
+  };
+  TestResults.push(newItem);
+
+  res.json(newItem);
+});
+
 module.exports = router;
