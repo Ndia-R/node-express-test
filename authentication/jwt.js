@@ -13,7 +13,7 @@ const jwtOptions = {
 passport.use(
   new passportJwt.Strategy(jwtOptions, (payload, done) => {
     // ユーザーがＤＢに存在すれば、最終的な認証ＯＫ
-    const user = Users.find((user) => user.id === parseInt(payload.sub));
+    const user = Users.find((u) => u.user_id === payload.sub);
     if (user) {
       return done(null, user, payload);
     }

@@ -2,6 +2,7 @@ const router = require("express").Router();
 const bcrypt = require("bcrypt");
 const crypto = require("crypto");
 const jwt = require("jsonwebtoken");
+const { v4: uuidv4 } = require("uuid");
 
 const { body, validationResult } = require("express-validator");
 const { Users } = require("../db/User");
@@ -22,7 +23,7 @@ router.post(
 
     // ユーザーの存在チェック
     const { username, password } = req.body;
-    const user = Users.find((user) => user.username === username);
+    const user = Users.find((u) => u.username === username);
     if (user) {
       return res.status(409).json({
         error: {
@@ -37,7 +38,7 @@ router.post(
 
     // 新規ユーザー作成
     const newUser = {
-      id: Math.max(...Users.map((user) => user.id)) + 1,
+      user_id: uuidv4(),
       username: username,
       password: hashedPassword,
       refresh_token: "",
@@ -55,7 +56,7 @@ router.post("/login", async (req, res) => {
   // ログインチェック
   const { username, password } = req.body;
 
-  const user = Users.find((user) => user.username === username);
+  const user = Users.find((u) => u.username === username);
   if (!user) {
     return res.status(404).json({
       error: {
@@ -81,36 +82,47 @@ router.post("/login", async (req, res) => {
     expiresIn: process.env.JWT_ACCESS_TOKEN_EXPIRES_IN,
     audience: process.env.JWT_AUDIENCE,
     issuer: process.env.JWT_ISSUER,
-    subject: user.id.toString(),
+    subject: user.user_id,
   });
 
   const refresh_token = jwt.sign(
     payload,
     process.env.JWT_REFRESH_TOKEN_SECRET,
     {
-      expiresIn: Number(process.env.JWT_REFRESH_TOKEN_EXPIRES_IN),
+      expiresIn: process.env.JWT_REFRESH_TOKEN_EXPIRES_IN,
       audience: process.env.JWT_AUDIENCE,
       issuer: process.env.JWT_ISSUER,
-      subject: user.id.toString(),
+      subject: user.user_id,
     }
   );
 
   // リフレッシュトークンをクッキーにセット
   res.cookie("refresh_token", refresh_token, {
     httpOnly: true,
-    maxAge: Number(process.env.JWT_REFRESH_TOKEN_EXPIRES_IN) * 1000,
     secure: true,
     sameSite: "strict",
   });
 
   // リフレッシュトークンをＤＢへ保存
   Users.forEach((u) => {
-    if (u.id === user.id) {
+    if (u.user_id === user.user_id) {
       u.refresh_token = refresh_token;
     }
   });
 
-  res.json({ access_token: access_token });
+  res.json({
+    user_id: user.user_id,
+    username: user.username,
+    access_token: access_token,
+  });
+});
+
+//-----------------------------------------------------------------
+// ログアウト
+//-----------------------------------------------------------------
+router.get("/logout", (req, res) => {
+  res.clearCookie("refresh_token");
+  res.json({ message: "clear refresh_token" });
 });
 
 //-----------------------------------------------------------------
@@ -118,6 +130,7 @@ router.post("/login", async (req, res) => {
 //-----------------------------------------------------------------
 router.get("/refresh", (req, res) => {
   const { refresh_token } = req.cookies;
+
   try {
     // リフレッシュトークンが有効か
     const decoded = jwt.verify(
@@ -127,8 +140,7 @@ router.get("/refresh", (req, res) => {
 
     // ＤＢに保存しているリフレッシュトークンと一致するか
     const user = Users.find(
-      (user) =>
-        user.id === Number(decoded.sub) && user.refresh_token === refresh_token
+      (u) => u.user_id === decoded.sub && u.refresh_token === refresh_token
     );
     if (!user) {
       throw new Error({
@@ -145,12 +157,16 @@ router.get("/refresh", (req, res) => {
       expiresIn: process.env.JWT_ACCESS_TOKEN_EXPIRES_IN,
       audience: process.env.JWT_AUDIENCE,
       issuer: process.env.JWT_ISSUER,
-      subject: user.id.toString(),
+      subject: user.user_id,
     });
 
-    return res.json({ access_token: newToken });
-  } catch (e) {
-    return res.json({ access_token: undefined });
+    return res.json({
+      user_id: user.user_id,
+      username: user.username,
+      access_token: newToken,
+    });
+  } catch (err) {
+    throw res.status(401).json(err);
   }
 });
 
