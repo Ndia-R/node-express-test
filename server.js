@@ -6,10 +6,13 @@ const passport = require("passport");
 require("dotenv").config();
 
 const app = express();
-const auth = require("./routes/auth");
-const user = require("./routes/user");
-const appUser = require("./routes/app-user");
-const TestResult = require("./routes/test-result");
+
+const auth = require("./routes/auth/auth");
+const user = require("./routes/auth/user");
+
+const appUser = require("./routes/emerald/app-user");
+const AptitudeTest = require("./routes/emerald/aptitude-test");
+
 app.use(
   cors({
     origin: "http://localhost:5173",
@@ -25,11 +28,12 @@ app.use(express.json());
 
 app.use("/auth", auth);
 app.use("/user", passport.authenticate("jwt", { session: false }), user);
+
 app.use("/app-user", passport.authenticate("jwt", { session: false }), appUser);
 app.use(
-  "/test-result",
-  passport.authenticate("jwt", { session: false }),
-  TestResult
+  "/aptitude-test",
+  // passport.authenticate("jwt", { session: false }),
+  AptitudeTest
 );
 
 const PORT = 5000;

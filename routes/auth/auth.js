@@ -5,13 +5,13 @@ const jwt = require("jsonwebtoken");
 const { v4: uuidv4 } = require("uuid");
 
 const { body, validationResult } = require("express-validator");
-const { Users } = require("../db/User");
+const { Users } = require("../../db/auth/User");
 
 //-----------------------------------------------------------------
 // 新規ユーザー登録
 //-----------------------------------------------------------------
 router.post(
-  "/user-register",
+  "/register",
   body("username").notEmpty(),
   body("password").notEmpty(),
   async (req, res) => {
