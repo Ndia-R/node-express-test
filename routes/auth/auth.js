@@ -1,11 +1,8 @@
 const router = require("express").Router();
-const bcrypt = require("bcrypt");
-const crypto = require("crypto");
 const jwt = require("jsonwebtoken");
-const { v4: uuidv4 } = require("uuid");
-
+const passport = require("passport");
 const { body, validationResult } = require("express-validator");
-const { Users } = require("../../db/auth/User");
+const AuthService = require("./auth.service");
 
 //-----------------------------------------------------------------
 // 新規ユーザー登録
@@ -21,10 +18,10 @@ router.post(
       return res.status(400).json({ errors: errors.array() });
     }
 
-    // ユーザーの存在チェック
     const { username, password } = req.body;
-    const user = Users.find((u) => u.username === username);
-    if (user) {
+    const authService = new AuthService();
+    const user = await authService.createUser(username, password);
+    if (!user) {
       return res.status(409).json({
         error: {
           name: "AlreadyExistsError",
@@ -33,89 +30,35 @@ router.post(
       });
     }
 
-    // パスワードのハッシュ化
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-    // 新規ユーザー作成
-    const newUser = {
-      user_id: uuidv4(),
-      username: username,
-      password: hashedPassword,
-      refresh_token: "",
-    };
-    Users.push(newUser);
-
-    res.json({ message: "ユーザー登録完了" });
+    res.json(user);
   }
 );
 
 //-----------------------------------------------------------------
 // ログイン
 //-----------------------------------------------------------------
-router.post("/login", async (req, res) => {
-  // ログインチェック
-  const { username, password } = req.body;
+router.post(
+  "/login",
+  passport.authenticate("local", { session: false }),
+  async (req, res) => {
+    const { user } = req;
+    const authService = new AuthService();
+    const { access_token, refresh_token } = authService.login(user);
 
-  const user = Users.find((u) => u.username === username);
-  if (!user) {
-    return res.status(404).json({
-      error: {
-        name: "AuthenticationError",
-        message: "ユーザー名またはパスワードが違います",
-      },
+    // リフレッシュトークンをクッキーにセット
+    res.cookie("refresh_token", refresh_token, {
+      httpOnly: true,
+      secure: true,
+      sameSite: "strict",
+    });
+
+    res.json({
+      user_id: user.user_id,
+      username: user.username,
+      access_token: access_token,
     });
   }
-  const isMatch = await bcrypt.compare(password, user.password);
-  if (!isMatch) {
-    return res.status(404).json({
-      error: {
-        name: "AuthenticationError",
-        message: "ユーザー名またはパスワードが違います",
-      },
-    });
-  }
-
-  // アクセストークンとリフレッシュトークンの作成（JWT）
-  const payload = { username: user.username };
-
-  const access_token = jwt.sign(payload, process.env.JWT_ACCESS_TOKEN_SECRET, {
-    expiresIn: process.env.JWT_ACCESS_TOKEN_EXPIRES_IN,
-    audience: process.env.JWT_AUDIENCE,
-    issuer: process.env.JWT_ISSUER,
-    subject: user.user_id,
-  });
-
-  const refresh_token = jwt.sign(
-    payload,
-    process.env.JWT_REFRESH_TOKEN_SECRET,
-    {
-      expiresIn: process.env.JWT_REFRESH_TOKEN_EXPIRES_IN,
-      audience: process.env.JWT_AUDIENCE,
-      issuer: process.env.JWT_ISSUER,
-      subject: user.user_id,
-    }
-  );
-
-  // リフレッシュトークンをクッキーにセット
-  res.cookie("refresh_token", refresh_token, {
-    httpOnly: true,
-    secure: true,
-    sameSite: "strict",
-  });
-
-  // リフレッシュトークンをＤＢへ保存
-  Users.forEach((u) => {
-    if (u.user_id === user.user_id) {
-      u.refresh_token = refresh_token;
-    }
-  });
-
-  res.json({
-    user_id: user.user_id,
-    username: user.username,
-    access_token: access_token,
-  });
-});
+);
 
 //-----------------------------------------------------------------
 // ログアウト
@@ -139,10 +82,9 @@ router.get("/refresh", (req, res) => {
     );
 
     // ＤＢに保存しているリフレッシュトークンと一致するか
-    const user = Users.find(
-      (u) => u.user_id === decoded.sub && u.refresh_token === refresh_token
-    );
-    if (!user) {
+    const userService = new userService();
+    const user = userService.findOneById(decoded.sub);
+    if (!user || user.refresh_token !== refresh_token) {
       throw new Error({
         error: {
           name: "UserNotFoundError",

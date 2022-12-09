@@ -1,4 +1,4 @@
-const AppUsers = [
+const Users = [
   {
     id: 1,
     name: "Julia",
@@ -22,4 +22,4 @@ const AppUsers = [
   },
 ];
 
-module.exports = { AppUsers };
+module.exports = { Users };

@@ -8,10 +8,10 @@ require("dotenv").config();
 const app = express();
 
 const auth = require("./routes/auth/auth");
-const user = require("./routes/auth/user");
+const users = require("./routes/auth/users");
 
-const appUser = require("./routes/emerald/app-user");
-const AptitudeTest = require("./routes/emerald/aptitude-test");
+const appUsers = require("./routes/emerald/users");
+const AptitudeTests = require("./routes/emerald/aptitude-tests");
 
 app.use(
   cors({
@@ -21,19 +21,28 @@ app.use(
 );
 
 app.use(passport.initialize());
-require("./authentication/jwt");
+require("./routes/auth/strategy/local.strategy");
+require("./routes/auth/strategy/jwt.strategy");
 
 app.use(cookieParser());
 app.use(express.json());
 
 app.use("/auth", auth);
-app.use("/user", passport.authenticate("jwt", { session: false }), user);
-
-app.use("/app-user", passport.authenticate("jwt", { session: false }), appUser);
 app.use(
-  "/aptitude-test",
+  "/users",
   // passport.authenticate("jwt", { session: false }),
-  AptitudeTest
+  users
+);
+
+app.use(
+  "/app-users",
+  passport.authenticate("jwt", { session: false }),
+  appUsers
+);
+app.use(
+  "/aptitude-tests",
+  // passport.authenticate("jwt", { session: false }),
+  AptitudeTests
 );
 
 const PORT = 5000;

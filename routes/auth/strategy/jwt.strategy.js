@@ -1,6 +1,6 @@
 const passport = require("passport");
 const passportJwt = require("passport-jwt");
-const { Users } = require("../db/auth/User");
+const UsersService = require("../users.service");
 
 const jwtOptions = {
   jwtFromRequest: passportJwt.ExtractJwt.fromAuthHeaderAsBearerToken(),
@@ -13,10 +13,10 @@ const jwtOptions = {
 passport.use(
   new passportJwt.Strategy(jwtOptions, (payload, done) => {
     // ユーザーがＤＢに存在すれば、最終的な認証ＯＫ
-    const user = Users.find((u) => u.user_id === payload.sub);
-    if (user) {
-      return done(null, user, payload);
+    const user = UsersService.findOneById(payload.sub);
+    if (!user) {
+      return done(null, false, { message: "認証失敗(JWT)" });
     }
-    return done(null, false);
+    return done(null, user, payload);
   })
 );

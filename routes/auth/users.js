@@ -1,7 +1,7 @@
 const router = require("express").Router();
-const { Users } = require("../../db/auth/User");
+const { Users } = require("../../db/auth/Users");
 
-router.get("/users", (req, res) => {
+router.get("/", (req, res) => {
   res.json(Users);
 });
 
