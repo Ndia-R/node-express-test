@@ -21,7 +21,6 @@ app.use(
 );
 
 app.use(passport.initialize());
-require("./routes/auth/strategy/local.strategy");
 require("./routes/auth/strategy/jwt.strategy");
 
 app.use(cookieParser());

@@ -1,12 +1,8 @@
 const router = require("express").Router();
 const jwt = require("jsonwebtoken");
-const passport = require("passport");
 const { body, validationResult } = require("express-validator");
 const AuthService = require("./auth.service");
 
-//-----------------------------------------------------------------
-// 新規ユーザー登録
-//-----------------------------------------------------------------
 router.post(
   "/register",
   body("username").notEmpty(),
@@ -18,54 +14,21 @@ router.post(
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { username, password } = req.body;
+    const { dto } = req.body;
     const authService = new AuthService();
-    const user = await authService.createUser(username, password);
-    if (!user) {
-      return res.status(409).json({
-        error: {
-          name: "AlreadyExistsError",
-          message: "すでにユーザーが存在しています",
-        },
-      });
-    }
-
-    res.json(user);
+    return await authService.createUser(dto, req, res);
   }
 );
 
-//-----------------------------------------------------------------
-// ログイン
-//-----------------------------------------------------------------
-router.post(
-  "/login",
-  passport.authenticate("local", { session: false }),
-  async (req, res) => {
-    const { user } = req;
-    const authService = new AuthService();
-    const { access_token, refresh_token } = authService.login(user);
+router.post("/login", async (req, res) => {
+  const { dto } = req.body;
+  const authService = new AuthService();
+  return await authService.login(dto, req, res);
+});
 
-    // リフレッシュトークンをクッキーにセット
-    res.cookie("refresh_token", refresh_token, {
-      httpOnly: true,
-      secure: true,
-      sameSite: "strict",
-    });
-
-    res.json({
-      user_id: user.user_id,
-      username: user.username,
-      access_token: access_token,
-    });
-  }
-);
-
-//-----------------------------------------------------------------
-// ログアウト
-//-----------------------------------------------------------------
 router.get("/logout", (req, res) => {
-  res.clearCookie("refresh_token");
-  res.json({ message: "clear refresh_token" });
+  const authService = new AuthService();
+  return authService.logout(req, res);
 });
 
 //-----------------------------------------------------------------

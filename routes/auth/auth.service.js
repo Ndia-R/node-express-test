@@ -4,55 +4,23 @@ const { v4: uuidv4 } = require("uuid");
 const UsersService = require("./users.service");
 
 class AuthService {
-  async validateUser({ username, password }) {
-    const usersService = new UsersService();
-    const user = usersService.findOne(username);
+  //-----------------------------------------------------------------
+  // 新規ユーザー作成
+  //-----------------------------------------------------------------
+  async createUser(dto) {
+    const { username, password } = dto;
 
-    if (user && (await bcrypt.compare(password, user.password))) {
-      const { password, ...result } = user;
-      return result;
-    }
-    return null;
-  }
-
-  login(user) {
-    const payload = { username: user.username };
-
-    const access_token = jwt.sign(
-      payload,
-      process.env.JWT_ACCESS_TOKEN_SECRET,
-      {
-        expiresIn: process.env.JWT_ACCESS_TOKEN_EXPIRES_IN,
-        audience: process.env.JWT_AUDIENCE,
-        issuer: process.env.JWT_ISSUER,
-        subject: user.user_id,
-      }
-    );
-
-    const refresh_token = jwt.sign(
-      payload,
-      process.env.JWT_REFRESH_TOKEN_SECRET,
-      {
-        expiresIn: process.env.JWT_REFRESH_TOKEN_EXPIRES_IN,
-        audience: process.env.JWT_AUDIENCE,
-        issuer: process.env.JWT_ISSUER,
-        subject: user.user_id,
-      }
-    );
-
-    user.refresh_token = refresh_token;
-
-    const usersService = new UsersService();
-    usersService.update(user);
-
-    return { access_token, refresh_token };
-  }
-
-  async createUser(username, password) {
     // ユーザーの存在チェック
     const usersService = new UsersService();
-    const user = usersService.findOne(username);
-    if (user) return undefined;
+    const foundUser = usersService.findOne(username);
+    if (foundUser) {
+      return res.status(400).json({
+        error: {
+          name: "BadRequestException",
+          message: "すでにユーザーが存在します",
+        },
+      });
+    }
 
     // パスワードのハッシュ化
     const hashedPassword = await bcrypt.hash(password, 10);
@@ -66,9 +34,74 @@ class AuthService {
     };
     usersService.create(newUser);
 
-    // パスワード以外の情報を返す
-    const { password: pass, ...result } = newUser;
-    return result;
+    return res.status(201).json({ message: "新規ユーザー作成に成功しました" });
+  }
+
+  //-----------------------------------------------------------------
+  // ログイン
+  //-----------------------------------------------------------------
+  async login(dto, req, res) {
+    const { username, password } = dto;
+
+    const usersService = new UsersService();
+    const foundUser = usersService.findOne(username);
+
+    if (!foundUser || !(await bcrypt.compare(password, foundUser.password))) {
+      return res.status(400).json({
+        error: {
+          name: "BadRequestException",
+          message: "ユーザー名またはパスワードが違います",
+        },
+      });
+    }
+
+    const payload = { username: foundUser.username };
+
+    const access_token = jwt.sign(
+      payload,
+      process.env.JWT_ACCESS_TOKEN_SECRET,
+      {
+        expiresIn: process.env.JWT_ACCESS_TOKEN_EXPIRES_IN,
+        audience: process.env.JWT_AUDIENCE,
+        issuer: process.env.JWT_ISSUER,
+        subject: foundUser.user_id,
+      }
+    );
+
+    const refresh_token = jwt.sign(
+      payload,
+      process.env.JWT_REFRESH_TOKEN_SECRET,
+      {
+        expiresIn: process.env.JWT_REFRESH_TOKEN_EXPIRES_IN,
+        audience: process.env.JWT_AUDIENCE,
+        issuer: process.env.JWT_ISSUER,
+        subject: foundUser.user_id,
+      }
+    );
+
+    foundUser.refresh_token = refresh_token;
+    usersService.update(foundUser);
+
+    // リフレッシュトークンをクッキーにセット
+    res.cookie("refresh_token", refresh_token, {
+      httpOnly: true,
+      secure: true,
+      sameSite: "strict",
+    });
+
+    return res.json({
+      user_id: foundUser.user_id,
+      username: foundUser.username,
+      access_token: access_token,
+    });
+  }
+
+  //-----------------------------------------------------------------
+  // ログアウト
+  //-----------------------------------------------------------------
+  logout(req, res) {
+    res.clearCookie("refresh_token");
+    return res.json({ message: "ログアウトしました" });
   }
 }
 module.exports = AuthService;
